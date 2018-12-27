@@ -49,20 +49,20 @@ detector = RelModel(classes=train.ind_to_classes, rel_classes=train.ind_to_predi
 
 print(print_para(detector), flush=True)
 
-fc6_w = torch.from_numpy(np.load('data/pretrain_models/fc6_w.npy'))
-fc6_b = torch.from_numpy(np.load('data/pretrain_models/fc6_b.npy'))
-fc7_w = torch.from_numpy(np.load('data/pretrain_models/fc7_w.npy'))
-fc7_b = torch.from_numpy(np.load('data/pretrain_models/fc7_b.npy'))
+# fc6_w = torch.from_numpy(np.load('data/pretrain_models/fc6_w.npy'))
+# fc6_b = torch.from_numpy(np.load('data/pretrain_models/fc6_b.npy'))
+# fc7_w = torch.from_numpy(np.load('data/pretrain_models/fc7_w.npy'))
+# fc7_b = torch.from_numpy(np.load('data/pretrain_models/fc7_b.npy'))
 
-detector.roi_fmap[0].weight.data.copy_(fc6_w)
-detector.roi_fmap[0].bias.data.copy_(fc6_b)
-detector.roi_fmap[2].weight.data.copy_(fc7_w)
-detector.roi_fmap[2].bias.data.copy_(fc7_b)
+# detector.roi_fmap[0].weight.data.copy_(fc6_w)
+# detector.roi_fmap[0].bias.data.copy_(fc6_b)
+# detector.roi_fmap[2].weight.data.copy_(fc7_w)
+# detector.roi_fmap[2].bias.data.copy_(fc7_b)
 
-detector.roi_fmap_obj[0].weight.data.copy_(fc6_w)
-detector.roi_fmap_obj[0].bias.data.copy_(fc6_b)
-detector.roi_fmap_obj[2].weight.data.copy_(fc7_w)
-detector.roi_fmap_obj[2].bias.data.copy_(fc7_b)
+# detector.roi_fmap_obj[0].weight.data.copy_(fc6_w)
+# detector.roi_fmap_obj[0].bias.data.copy_(fc6_b)
+# detector.roi_fmap_obj[2].weight.data.copy_(fc7_w)
+# detector.roi_fmap_obj[2].bias.data.copy_(fc7_b)
 
 def get_optim(lr):
     # Lower the learning rate on the VGG fully connected layers by 1/10th. It's a hack, but it helps
