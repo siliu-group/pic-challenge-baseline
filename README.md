@@ -1,4 +1,4 @@
-## Introduction(V2) ##
+## Introduction(v2) ##
 
 This repository just provides a baseline for [PIC Challenge](http://www.picdataset.com/challenge/index/). **Lots of code are from [neural-motifs](https://github.com/rowanz/neural-motifs) and it is not end-to-end.**
 
@@ -84,5 +84,5 @@ DATA_PATH
 ----------------------------------------
 ```
 
-## Help#
+## Help ##
 Feel free to push issues if you encounter trouble getting it to work!
