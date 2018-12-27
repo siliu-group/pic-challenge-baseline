@@ -1,4 +1,4 @@
-## Introduction ##
+## Introduction(V2) ##
 
 This repository just provides a baseline for [PIC Challenge](http://www.picdataset.com/challenge/index/). **Lots of code are from [neural-motifs](https://github.com/rowanz/neural-motifs) and it is not end-to-end.**
 
@@ -17,20 +17,16 @@ This repository just provides a baseline for [PIC Challenge](http://www.picdatas
 
 1. You should train a instance-segmentation model on PIC. For example, you can use [Detectron](https://github.com/facebookresearch/Detectron) to generate the boxes, masks and feature maps of train/val/test data.
 
-2. run ./script/train.sh to train relation model.
+2. run `./script/train_motif.sh` or `./script/train_stanford.sh` to train relation model.
 
-3. run ./scripy/test.sh to generate results.
-
+3. run `./scripy/test_motif.sh` or `./scripy/test_stanford.sh` to generate and eval results.
 
 ## File Tree ##
 
-
-- obj_feat/xxx.npy: [\#instance, 1024+85+4+30\*30] 1024: the output feat of fc7. 85: cls_score. 4: (x1,y1,x2,y2). 30*30: mask
-- roi_feat/xxx.npy: [\#instance, 256\*7\*7] the feat after RoIAlign of all instances
 - you can download glove.6B.100d.pt/glove.6B.200d.pt from [baiduyun pwd: at8t](https://pan.baidu.com/s/1wAWUpvmSQ9PV44uDJbUqZQ) or [official website](https://nlp.stanford.edu/data/)
+- offline features
 
 ```
-
 ----------------------------------------
 PIC_PATH
 └───categories_list
@@ -57,29 +53,36 @@ PIC_PATH
 │   │      │      xxx.png
 │   │      └───semantic
 │   │      │      xxx.png
+└───test_gt
 ----------------------------------------
-PIC_OFFLINE_PATH
+MASK_RCNN_PATH
 └───train
-│   └───obj_feat
-│   │      xxx.npy
-│   └───roi_feat
-│   │      xxx.npy
+│   └───P4
+│   │      xxx.npy(1,256,H,W)
 └───val
-│   └───obj_feat
-│   │      xxx.npy
-│   └───roi_feat
-│   │      xxx.npy
+│   └───P4
+│   │      xxx.npy(1,256,H,W)
+│   └───bboxs
+│   │      xxx.npy(N,4)
+│   └───labels
+│   │      xxx.npy(N,1)
+│   └───masks
+│   │      xxx.npy(N,28,28)
 └───test
-│   └───obj_feat
-│   │      xxx.npy
-│   └───roi_feat
-│   │      xxx.npy
+│   └───P4
+│   │      xxx.npy(1,256,H,W)
+│   └───bboxs
+│   │      xxx.npy(N,4)
+│   └───labels
+│   │      xxx.npy(N,1)
+│   └───masks
+│   │      xxx.npy(N,28,28)
 ----------------------------------------
 DATA_PATH
 └───glove.6B.100d.pt
 └───glove.6B.200d.pt
 ----------------------------------------
 ```
-# Help
 
+## Help#
 Feel free to push issues if you encounter trouble getting it to work!

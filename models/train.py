@@ -17,15 +17,15 @@ from lib.pytorch_misc import print_para
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import cv2
 from lib.evaluation.pic_eval import evaluate_from_dict
-
-
 conf = ModelConfig()
 if conf.model == 'motifnet':
-    from lib.rel_model import RelModel
+    from lib.motif_pic import RelModel
+elif conf.model == 'stanford':
+    from lib.stanford_pic import RelModelStanford as RelModel
 else:
     raise ValueError()
 
-assert conf.dataset == 'pic'
+# assert conf.dataset == 'pic'
 
 train, val = PICDataset.splits()
 train_loader, val_loader = PICDataLoader.splits(train, val, mode='rel', batch_size=conf.batch_size,
@@ -45,11 +45,24 @@ detector = RelModel(classes=train.ind_to_classes, rel_classes=train.ind_to_predi
                     use_bias=conf.use_bias,
                     use_tanh=conf.use_tanh,
                     limit_vision=conf.limit_vision,
-                    dataset=conf.dataset,
                     )
 
 print(print_para(detector), flush=True)
 
+fc6_w = torch.from_numpy(np.load('data/pretrain_models/fc6_w.npy'))
+fc6_b = torch.from_numpy(np.load('data/pretrain_models/fc6_b.npy'))
+fc7_w = torch.from_numpy(np.load('data/pretrain_models/fc7_w.npy'))
+fc7_b = torch.from_numpy(np.load('data/pretrain_models/fc7_b.npy'))
+
+detector.roi_fmap[0].weight.data.copy_(fc6_w)
+detector.roi_fmap[0].bias.data.copy_(fc6_b)
+detector.roi_fmap[2].weight.data.copy_(fc7_w)
+detector.roi_fmap[2].bias.data.copy_(fc7_b)
+
+detector.roi_fmap_obj[0].weight.data.copy_(fc6_w)
+detector.roi_fmap_obj[0].bias.data.copy_(fc6_b)
+detector.roi_fmap_obj[2].weight.data.copy_(fc7_w)
+detector.roi_fmap_obj[2].bias.data.copy_(fc7_b)
 
 def get_optim(lr):
     # Lower the learning rate on the VGG fully connected layers by 1/10th. It's a hack, but it helps
@@ -72,18 +85,12 @@ start_epoch = -1
 
 
 detector.cuda()
-# ckpt = torch.load('/home/rgh/Relation/code/baseline/checkpoints/pic_sgdet/picrel-0.tar')
+# ckpt = torch.load('/home/rgh/Relation/code/baseline_v2/checkpoints/mask_feat/pic_rel-25.tar')
 # print("Loading EVERYTHING")
 # start_epoch = ckpt['epoch']
 # if not optimistic_restore(detector, ckpt['state_dict']):
 #     start_epoch = -1
 
-# with open('/home/rgh/Relation/code/baseline/checkpoints/model_final.pkl', 'rb') as f:
-#     ckpt = pickle.load(f, encoding='iso-8859-1')
-# detector.fc67[0].weight.data.copy_(torch.FloatTensor(ckpt['blobs']['fc6_w']).cuda())
-# detector.fc67[0].bias.data.copy_(torch.FloatTensor(ckpt['blobs']['fc6_b']).cuda())
-# detector.fc67[2].weight.data.copy_(torch.FloatTensor(ckpt['blobs']['fc7_w']).cuda())
-# detector.fc67[2].bias.data.copy_(torch.FloatTensor(ckpt['blobs']['fc7_b']).cuda())
 
 def train_epoch(epoch_num):
     detector.train()
@@ -100,7 +107,6 @@ def train_epoch(epoch_num):
             print(mn)
             print('-----------', flush=True)
             start = time.time()
-        #break
     return pd.concat(tr, axis=1)
 
 
@@ -123,10 +129,11 @@ def train_batch(b, verbose=False):
           :param gt_classes: [num_gt, 2] gt boxes where each one is (img_id, class)
     :return:
     """
-    pred_dists, cls_targets, rel_dists, rel_targets = detector[b]
+    result = detector[b]
+
     losses = {}
-    losses['class_loss'] = F.cross_entropy(pred_dists, cls_targets)
-    losses['rel_loss'] = F.cross_entropy(rel_dists, rel_targets[:, -1])
+    losses['class_loss'] = F.cross_entropy(result.rm_obj_dists, result.rm_obj_labels)
+    losses['rel_loss'] = F.cross_entropy(result.rel_dists, result.rel_labels[:, -1])
     loss = sum(losses.values())
 
     optimizer.zero_grad()
@@ -210,21 +217,21 @@ def val_batch(batch_num, b, result_dict, iou_threshes, rel_cats, geometric_rel_c
             'instance': gt_instance.astype(np.int32),
             'relations': gt_relations
         }
-        if conf.mode == 'sgcls':
-            pred_relations = np.concatenate((rels_i, rel_classes_i[..., None]), axis=1)
-            pred_relations[:, 0:2] += 1
-            pred_entry = {
-                'semantic': gt_semantic.astype(np.int32),
-                'instance': gt_instance.astype(np.int32),
-                'relations': pred_relations
-            }
-        elif conf.mode == 'sgdet':
-            boxes_i = boxes_i.astype(np.int32)
+        # if conf.mode == 'sgcls':
+        #     pred_relations = np.concatenate((rels_i, rel_classes_i[..., None]), axis=1)
+        #     pred_relations[:, 0:2] += 1
+        #     pred_entry = {
+        #         'semantic': gt_semantic.astype(np.int32),
+        #         'instance': gt_instance.astype(np.int32),
+        #         'relations': pred_relations
+        #     }
+        # elif conf.mode == 'sgdet':
+        if True:
+            boxes_i = np.round(boxes_i).astype(np.int32)
             pred_semantic = np.zeros((im_h, im_w), dtype=np.uint8)#np.zeros_like(gt_semantic)
             pred_instance = np.zeros((im_h, im_w), dtype=np.uint8)#np.zeros_like(gt_instance)
-            obj_scores_i_sorted_index = np.argsort(obj_scores_i)
-            for index in range(len(obj_scores_i_sorted_index)):
-                instance_id = obj_scores_i_sorted_index[index]
+            obj_order = np.argsort(objs_labels_i)[::-1]
+            for i, instance_id in enumerate(obj_order):
                 ref_box = boxes_i[instance_id, :]
                 w = ref_box[2] - ref_box[0] + 1
                 h = ref_box[3] - ref_box[1] + 1
@@ -241,14 +248,16 @@ def val_batch(batch_num, b, result_dict, iou_threshes, rel_cats, geometric_rel_c
                 x_1 = min(ref_box[2] + 1, im_w)
                 y_0 = max(ref_box[1], 0)
                 y_1 = min(ref_box[3] + 1, im_h)
-                pred_instance[y_0:y_1, x_0:x_1] = mask_instance[
+                #print(ref_box, x_0, x_1, y_0, y_1, w, h)
+                nonbk = mask != 0
+                pred_instance[y_0:y_1, x_0:x_1][nonbk] = mask_instance[
                                                            (y_0 - ref_box[1]):(y_1 - ref_box[1]),
                                                            (x_0 - ref_box[0]):(x_1 - ref_box[0])
-                                                           ]
-                pred_semantic[y_0:y_1, x_0:x_1] = mask_category[
+                                                           ][nonbk]
+                pred_semantic[y_0:y_1, x_0:x_1][nonbk] = mask_category[
                                                            (y_0 - ref_box[1]):(y_1 - ref_box[1]),
                                                            (x_0 - ref_box[0]):(x_1 - ref_box[0])
-                                                           ]
+                                                           ][nonbk]
 
             pred_relations = np.concatenate((rels_i, rel_classes_i[..., None]), axis=1)
             pred_relations[:, 0:2] += 1
@@ -277,7 +286,7 @@ for epoch in range(start_epoch + 1, start_epoch + 1 + conf.num_epochs):
         torch.save({
             'epoch': epoch,
             'state_dict': detector.state_dict(),
-        }, os.path.join(conf.save_dir, '{}-{}.tar'.format(conf.dataset+'rel', epoch)))
+        }, os.path.join(conf.save_dir, '{}-{}.tar'.format('pic_rel', epoch)))
     mAp = val_epoch()
     scheduler.step(mAp)
     if any([pg['lr'] <= (conf.lr * conf.num_gpus * conf.batch_size)/99.0 for pg in optimizer.param_groups]):

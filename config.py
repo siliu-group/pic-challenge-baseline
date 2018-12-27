@@ -17,7 +17,6 @@ def stanford_path(fn):
 # =============================================================================
 # Update these with where your data is stored ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# VG_IMAGES = '/home/rowan/datasets2/VG_100K_2/VG_100K'
 VG_IMAGES = '/home/rgh/Relation/code/neural-motifs/data/stanford_filtered/VisualGenome2016/VG_100K'
 RCNN_CHECKPOINT_FN = path('faster_rcnn_500k.h5')
 
@@ -27,8 +26,8 @@ VG_SGG_DICT_FN = stanford_path('VG-SGG-dicts.json')
 PROPOSAL_FN = stanford_path('proposals.h5')
 
 COCO_PATH = '/home/rowan/datasets/mscoco'
-PIC_PATH = '/home/rgh/Relation/code/neural-motifs/data/pic'
-PIC_OFFLINE_PATH = '/home/rgh/Relation/code/neural-motifs/data/pic_offline'
+PIC_PATH = 'data/pic'
+MASK_RCNN_PATH = 'data/maskrcnn'
 # =============================================================================
 # =============================================================================
 
@@ -69,9 +68,7 @@ class ModelConfig(object):
         """
         Defaults
         """
-        self.mask_resolution = None
-        self.dataset='coco'
-        #self.coco = None
+        self.coco = None
         self.ckpt = None
         self.save_dir = None
         self.lr = None
@@ -154,9 +151,7 @@ class ModelConfig(object):
 
 
         # Options to deprecate
-        # parser.add_argument('-coco', dest='coco', help='Use COCO (default to VG)', action='store_true')
-        parser.add_argument('-dataset', dest='dataset', type=str, default='coco')
-        parser.add_argument('-mask_resolution', dest='mask_resolution', help='resolution of mask branch', type=int, default=28)
+        parser.add_argument('-coco', dest='coco', help='Use COCO (default to VG)', action='store_true')
         parser.add_argument('-ckpt', dest='ckpt', help='Filename to load from', type=str, default='')
         parser.add_argument('-det_ckpt', dest='det_ckpt', help='Filename to load detection parameters from', type=str, default='')
 

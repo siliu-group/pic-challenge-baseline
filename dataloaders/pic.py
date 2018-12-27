@@ -5,12 +5,12 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from torchvision.transforms import Resize, Compose, ToTensor, Normalize
-from dataloaders.blob import Blob
+from dataloaders.blob_pic import Blob
 from dataloaders.image_transforms import SquarePad, Grayscale, Brightness, Sharpness, Contrast, \
     RandomOrder, Hue, random_crop
 from collections import defaultdict
 from pycocotools.coco import COCO
-from config import PIC_PATH, IM_SCALE, BOX_SCALE, PIC_OFFLINE_PATH
+from config import PIC_PATH, IM_SCALE, BOX_SCALE, MASK_RCNN_PATH, DATA_PATH
 import lib.utils.segms as segm_utils
 import json
 import cv2
@@ -21,7 +21,7 @@ class PICDataset(Dataset):
      Adapted from the torchvision code
      """
 
-    def __init__(self, mode, filter_duplicate_rels=True, mask_resolution=28):
+    def __init__(self, mode, filter_duplicate_rels=True, mask_resolution=28, use_for_bias=False):
         """
         :param mode: train2014 or val2014
         """
@@ -44,11 +44,16 @@ class PICDataset(Dataset):
             Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
         self.transform_pipeline = Compose(tform)
-        image_names = [name[:-4] for name in os.listdir(os.path.join(PIC_PATH, 'image/'+mode)) if name.endswith('.jpg')]
+        #image_names = [name[:-4] for name in os.listdir(os.path.join(PIC_PATH, 'image/'+mode)) if name.endswith('.jpg')]
+        error_list = [line.strip()[:-4] for line in open(os.path.join(PIC_PATH, mode+'_error_list.txt'))]
+        image_names = [name[:-4] for name in os.listdir(os.path.join(PIC_PATH, 'image/' + mode)) if
+                       name.endswith('.jpg') and name[:-4] not in error_list]
+        image_names.sort(key=str.lower)
         if self.mode != 'test':
-            semantic_names = [name[:-4] for name in os.listdir(os.path.join(PIC_PATH, 'segmentation/'+mode+'/semantic')) if name.endswith('.png')]
-            instance_names = [name[:-4] for name in os.listdir(os.path.join(PIC_PATH, 'segmentation/'+mode+'/instance')) if name.endswith('.png')]
-            image_names.sort(key=str.lower)
+            semantic_names = [name[:-4] for name in os.listdir(os.path.join(PIC_PATH, 'segmentation/'+mode+'/semantic'))
+                              if name.endswith('.png') and name[:-4] not in error_list]
+            instance_names = [name[:-4] for name in os.listdir(os.path.join(PIC_PATH, 'segmentation/'+mode+'/instance'))
+                              if name.endswith('.png') and name[:-4] not in error_list]
             semantic_names.sort(key=str.lower)
             instance_names.sort(key=str.lower)
             assert image_names == semantic_names
@@ -57,6 +62,7 @@ class PICDataset(Dataset):
         #                name.endswith('.npy')]
         # image_names.sort(key=str.lower)
         self.img_names = image_names
+        print(len(self.img_names))
         rel_cats = json.load(open(os.path.join(PIC_PATH,'categories_list/relation_categories.json')))
         self.ind_to_predicates = [rel_cat['name'] for rel_cat in rel_cats]
         cls_cats = json.load(open(os.path.join(PIC_PATH, 'categories_list/label_categories.json')))
@@ -78,6 +84,26 @@ class PICDataset(Dataset):
         self.id_to_ind = {ind: ind for ind, name in enumerate(self.ind_to_classes)}
         self.ind_to_id = {x: y for y, x in self.id_to_ind.items()}
         #self.create_coco_format()
+        if use_for_bias:
+            dataset = json.load(open(os.path.join(PIC_PATH, 'train.json')))
+            anns, imgs = {}, {}
+            imgToAnns = defaultdict(list)
+            for img in dataset['images']:
+                imgs[img['id']] = img['file_name'][:-4]
+            for ann in dataset['annotations']:
+                imgToAnns[imgs[ann['image_id']]].append(ann)
+            self.img2boxes = dict()
+            self.img2classes = dict()
+            for img_name, anns in imgToAnns.items():
+                gt_box = []
+                gt_class = []
+                for ann in anns:
+                    gt_box.append(np.array([ann['bbox']]))
+                    gt_class.append(np.array([ann['category_id']]))
+                gt_box = np.concatenate(gt_box, axis=0)
+                gt_class = np.concatenate(gt_class, axis=0)
+                self.img2boxes[img_name] = gt_box
+                self.img2classes[img_name] = gt_class
     def create_coco_format(self):
 
         self.coco = COCO()
@@ -146,18 +172,31 @@ class PICDataset(Dataset):
                 gt_rels = [(k[0], k[1], np.random.choice(v)) for k,v in all_rel_sets.items()]
                 gt_rels = np.array(gt_rels)
 
-        obj_feat = np.load(os.path.join(PIC_OFFLINE_PATH, self.mode+'/obj_feat/'+img_name+'.npy'))
-        roi_feat = np.load(os.path.join(PIC_OFFLINE_PATH, self.mode+'/roi_feat/'+img_name+'.npy'))
-        pred_dists = obj_feat[:, 1024:1024 + 85]
-        labels = pred_dists.argmax(axis=1)
-        non_bg_index = labels != 0
-        pred_dists = pred_dists[non_bg_index]
-        #pred_fmaps = roi_feat[:, 0:1024][non_bg_index]
-        pred_fmaps = roi_feat[non_bg_index]
-        pred_boxes = obj_feat[:, 1024+85:1024+85+4][non_bg_index]
-        pred_masks = obj_feat[:, 1024+85+4:].reshape((-1, 30, 30))[:, 1:-1, 1:-1][non_bg_index]
-        pred_masks = np.array(pred_masks >= 0.5, dtype=np.uint8)
-
+        # obj_feat = np.load(os.path.join(PIC_OFFLINE_PATH, self.mode+'/obj_feat/'+img_name+'.npy'))
+        # roi_feat = np.load(os.path.join(PIC_OFFLINE_PATH, self.mode+'/roi_feat/'+img_name+'.npy'))
+        # pred_dists = obj_feat[:, 1024:1024 + 85]
+        # labels = pred_dists.argmax(axis=1)
+        # non_bg_index = labels != 0
+        # pred_dists = pred_dists[non_bg_index]
+        # #pred_fmaps = roi_feat[:, 0:1024][non_bg_index]
+        # pred_fmaps = roi_feat[non_bg_index]
+        # pred_boxes = obj_feat[:, 1024+85:1024+85+4][non_bg_index]
+        # pred_masks = obj_feat[:, 1024+85+4:].reshape((-1, 30, 30))[:, 1:-1, 1:-1][non_bg_index]
+        # pred_masks = np.array(pred_masks >= 0.5, dtype=np.uint8)
+        # print(index, img_name)
+        if self.mode != 'train':
+            pred_fmaps = np.load(os.path.join(MASK_RCNN_PATH, self.mode + '/P4/' + img_name + '_P4.npy'))
+            pred_dists = np.load(os.path.join(MASK_RCNN_PATH, self.mode+'/labels/'+img_name+'.npy'))
+            pred_boxes = np.load(os.path.join(MASK_RCNN_PATH, self.mode+'/bboxs/'+img_name+'.npy'))
+            pred_masks = np.load(os.path.join(MASK_RCNN_PATH, self.mode+'/masks/'+img_name+'.npy'))
+        else:
+            pred_fmaps = np.load(os.path.join(MASK_RCNN_PATH, self.mode + '/P4/' + img_name + '_P4.npy'))
+            #pred_fmaps = np.ones((1, 256, 60, 60))
+            #pred_fmaps = np.load(os.path.join(MASK_RCNN_PATH, self.mode+'/gt/'+img_name+'.npy'))
+            pred_dists = np.ones((2, 3))#np.load(os.path.join(MASK_RCNN_PATH, self.mode+'/gt/labels/'+img_name+'.npy'))
+            pred_boxes = np.ones((2, 3))#np.load(os.path.join(MASK_RCNN_PATH, self.mode+'/gt/bboxs/'+img_name+'.npy'))
+            pred_masks = np.ones((2, 28, 28))#np.load(os.path.join(MASK_RCNN_PATH, self.mode+'/gt/masks/'+img_name+'.npy'))
+        #print(gt_boxes.shape, pred_boxes.shape)
         entry = {
             'img': img_name, #self.transform_pipeline(image_unpadded),
             'img_size': (1, 1, 1),

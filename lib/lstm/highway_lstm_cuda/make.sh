@@ -39,4 +39,4 @@ cd src
 echo "Compiling kernel"
 /usr/local/cuda/bin/nvcc -c -o highway_lstm_kernel.cu.o highway_lstm_kernel.cu --compiler-options -fPIC $CUDA_MODEL_TARGETS
 cd ../
-python3 build.py
+python build.py
